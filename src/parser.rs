@@ -1,5 +1,5 @@
-use crate::value::{Json, Node};
 use crate::utils::parse_string;
+use crate::value::{Json, Node};
 
 pub fn parse_value(buf: &[u8]) -> Option<Json> {
     let mut json = Json::new();
@@ -16,7 +16,7 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn new(buf: &'a [u8], json: &'a mut Json) -> Parser<'a> {
-        Self { buf, json, pos: 0}
+        Self { buf, json, pos: 0 }
     }
 
     fn parse(&mut self) -> () {
@@ -77,7 +77,9 @@ impl<'a> Parser<'a> {
         let s = if has_escape {
             parse_string(&self.buf[start..self.pos]).unwrap()
         } else {
-            std::str::from_utf8(&self.buf[start..self.pos]).unwrap().to_string()
+            std::str::from_utf8(&self.buf[start..self.pos])
+                .unwrap()
+                .to_string()
         };
         self.must_match(b'"');
         self.step();
@@ -149,7 +151,7 @@ impl<'a> Parser<'a> {
         self.step();
 
         let mut first = true;
-        
+
         loop {
             self.skip_whitespaces();
             if self.peek(b'}') {

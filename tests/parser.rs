@@ -1,4 +1,5 @@
-use jsonc::{parser::parse_value, value::{Json, Node}};
+use jsonc::parser::parse_value;
+use jsonc::value::{Json, Node};
 
 fn test_parser() {
     let json = r#"

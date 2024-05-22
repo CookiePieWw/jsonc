@@ -40,10 +40,26 @@ impl Json {
 
     fn as_arrow_type(&self) -> DataType {
         DataType::Struct(Fields::from(vec![
-            Field::new("nodes", DataType::List(Arc::new(Field::new("item", DataType::UInt8, true))), false),
-            Field::new("offsets", DataType::List(Arc::new(Field::new("item", DataType::UInt64, true))), false),
-            Field::new("strings", DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))), false),
-            Field::new("numbers", DataType::List(Arc::new(Field::new("item", DataType::Float64, true))), false),
+            Field::new(
+                "nodes",
+                DataType::List(Arc::new(Field::new("item", DataType::UInt8, true))),
+                false,
+            ),
+            Field::new(
+                "offsets",
+                DataType::List(Arc::new(Field::new("item", DataType::UInt64, true))),
+                false,
+            ),
+            Field::new(
+                "strings",
+                DataType::List(Arc::new(Field::new("item", DataType::Utf8, true))),
+                false,
+            ),
+            Field::new(
+                "numbers",
+                DataType::List(Arc::new(Field::new("item", DataType::Float64, true))),
+                false,
+            ),
         ]))
     }
 }
