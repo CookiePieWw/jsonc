@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use arrow::datatypes::{DataType, Field, Fields};
+use arrow::{array::{ArrayRef, Float64Array, StringArray, StructArray, UInt64Array, UInt8Array}, datatypes::{DataType, Field, Fields}};
+use datafusion_common::ScalarValue;
 
 #[derive(Debug, PartialEq)]
 pub enum Node {
@@ -14,6 +15,23 @@ pub enum Node {
     Number,
     True,
     False,
+}
+
+impl Node {
+    fn to_u8(&self) -> u8 {
+        match self {
+            Node::Null => 0,
+            Node::StartArray => 1,
+            Node::EndArray => 2,
+            Node::StartObject => 3,
+            Node::EndObject => 4,
+            Node::Key => 5,
+            Node::String => 6,
+            Node::Number => 7,
+            Node::True => 8,
+            Node::False => 9,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -61,5 +79,37 @@ impl Json {
                 false,
             ),
         ]))
+    }
+
+    pub fn try_to_scalar_value(&self) -> Option<ScalarValue> {
+        let nodes = self.nodes.iter().map(|n| n.to_u8()).collect::<Vec<u8>>();
+        let offsets = self
+            .offsets
+            .iter()
+            .map(|o| match o {
+                Some(o) => *o as u64,
+                None => 0,
+            })
+            .collect::<Vec<u64>>();
+        let strings = self.strings.iter().map(|s| s.as_str()).collect::<Vec<&str>>();
+        let numbers = self.numbers.iter().map(|n| *n).collect::<Vec<f64>>();
+
+        let nodes = Arc::new(UInt8Array::from(nodes));
+        let offsets = Arc::new(UInt64Array::from(offsets));
+        let strings = Arc::new(StringArray::from(strings));
+        let numbers = Arc::new(Float64Array::from(numbers));
+
+        let values: Vec<ArrayRef> = vec![nodes, offsets, strings, numbers];
+
+        let fields = Fields::from(vec![
+            Field::new("nodes", DataType::UInt8, false),
+            Field::new("offsets", DataType::UInt64, false),
+            Field::new("strings", DataType::Utf8, false),
+            Field::new("numbers", DataType::Float64, false),
+        ]);
+        let nulls = None;
+        let arr = StructArray::new(fields, values, nulls);
+
+        Some(ScalarValue::Struct(Arc::new(arr)))
     }
 }

@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 arrow = { version = "51.0.0", features = ["prettyprint"] }
+datafusion-common = { git = "https://github.com/apache/arrow-datafusion.git", rev = "34eda15b73a9e278af8844b30ed2f1c21c10359c" }
