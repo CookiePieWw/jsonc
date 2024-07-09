@@ -1,3 +1,3 @@
+pub mod decoder;
 pub mod parser;
-mod utils;
 pub mod value;

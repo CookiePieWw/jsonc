@@ -1,5 +1,6 @@
+use jsonc::decoder::decode;
 use jsonc::parser::parse_value;
-use jsonc::value::{Json, Node};
+use jsonc::value::{Jsonc, Node};
 
 fn test_parser() {
     let json = r#"
@@ -11,9 +12,9 @@ fn test_parser() {
         }
     "#;
     let json = json.as_bytes();
-    let parsed_json = parse_value(json).unwrap();
+    let parsed_json = parse_value(json);
 
-    let mut expected_json = Json::new();
+    let mut expected_json = Jsonc::new();
     let nodes = vec![
         Node::StartObject,
         Node::Key,
@@ -30,22 +31,6 @@ fn test_parser() {
         Node::EndArray,
         Node::EndObject,
     ];
-    let offsets = vec![
-        None,
-        Some(0),
-        Some(1),
-        Some(2),
-        Some(0),
-        Some(3),
-        None,
-        Some(4),
-        None,
-        Some(1),
-        Some(2),
-        Some(3),
-        None,
-        None,
-    ];
     let strings = vec![
         "name".to_string(),
         "John Doe".to_string(),
@@ -56,14 +41,32 @@ fn test_parser() {
     let numbers = vec![43.0, 100.0, 98.0, 100.0];
 
     expected_json.nodes = nodes;
-    expected_json.offsets = offsets;
     expected_json.strings = strings;
     expected_json.numbers = numbers;
 
     assert_eq!(parsed_json, expected_json);
 }
 
+fn test_decoder() {
+    let json = r#"
+        {
+            "name": "John Doe",
+            "age": 43,
+            "is_student": false,
+            "scores": [100, 98, 100]
+        }
+    "#;
+    let json = json.as_bytes();
+    let parsed_json = parse_value(json);
+    let decoded_json = decode(&parsed_json);
+
+    let expected_json = r#"{"name":"John Doe","age":43,"is_student":false,"scores":[100,98,100]}"#;
+
+    assert_eq!(decoded_json, expected_json);
+}
+
 #[test]
 fn test() {
     test_parser();
+    test_decoder();
 }

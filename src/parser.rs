@@ -1,253 +1,354 @@
-use crate::utils::parse_string;
-use crate::value::{Json, Node};
+use core::panic;
 
-pub fn parse_value(buf: &[u8]) -> Option<Json> {
-    let mut json = Json::new();
+use jsonb::util::parse_string;
+
+use crate::value::{Jsonc, Node};
+
+pub fn parse_value(buf: &[u8]) -> Jsonc {
+    let mut json = Jsonc::default();
     let mut parser = Parser::new(buf, &mut json);
     parser.parse();
-    Some(json)
+    json
 }
 
 struct Parser<'a> {
     buf: &'a [u8],
-    json: &'a mut Json,
-    pos: usize,
+    json: &'a mut Jsonc,
+    idx: usize,
 }
 
 impl<'a> Parser<'a> {
-    fn new(buf: &'a [u8], json: &'a mut Json) -> Parser<'a> {
-        Self { buf, json, pos: 0 }
+    fn new(buf: &'a [u8], json: &'a mut Jsonc) -> Parser<'a> {
+        Self { buf, json, idx: 0 }
     }
 
-    fn parse(&mut self) -> () {
-        self.parse_value();
-    }
-
-    fn parse_value(&mut self) -> () {
-        self.skip_whitespaces();
-        match self.buf[self.pos] {
-            b'n' => self.parse_null(),
-            b't' => self.parse_true(),
-            b'f' => self.parse_false(),
-            b'"' => self.parse_string(),
-            b'0'..=b'9' | b'-' => self.parse_number(),
-            b'[' => self.parse_array(),
-            b'{' => self.parse_object(),
-            _ => panic!("unexpected character: {}", self.buf[self.pos] as char),
+    fn parse(&mut self) {
+        self.parse_json_value();
+        self.skip_unused();
+        if self.idx < self.buf.len() {
+            self.step();
+            panic!("Unexpected trailing characters")
         }
     }
 
-    fn parse_null(&mut self) -> () {
-        self.must_match_by("null");
-        self.json.offsets.push(None);
+    fn parse_json_value(&mut self) {
+        self.skip_unused();
+        let c = self.next();
+        match c {
+            b'n' => self.parse_json_null(),
+            b't' => self.parse_json_true(),
+            b'f' => self.parse_json_false(),
+            b'0'..=b'9' | b'-' => self.parse_json_number(),
+            b'"' => self.parse_json_string(),
+            b'[' => self.parse_json_array(),
+            b'{' => self.parse_json_object(),
+            _ => {
+                self.step();
+                panic!("Unexpected character")
+            }
+        };
+    }
+
+    fn next(&mut self) -> &u8 {
+        match self.buf.get(self.idx) {
+            Some(c) => c,
+            None => panic!("Unexpected EOF"),
+        }
+    }
+
+    fn must_is(&mut self, c: u8) {
+        match self.buf.get(self.idx) {
+            Some(v) => {
+                self.step();
+                if v != &c {
+                    panic!("Unexpected character")
+                }
+            }
+            None => panic!("Unexpected EOF"),
+        }
+    }
+
+    fn check_next(&mut self, c: u8) -> bool {
+        if self.idx < self.buf.len() {
+            let v = self.buf.get(self.idx).unwrap();
+            if v == &c {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn check_next_either(&mut self, c1: u8, c2: u8) -> bool {
+        if self.idx < self.buf.len() {
+            let v = self.buf.get(self.idx).unwrap();
+            if v == &c1 || v == &c2 {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn check_digit(&mut self) -> bool {
+        if self.idx < self.buf.len() {
+            let v = self.buf.get(self.idx).unwrap();
+            if v.is_ascii_digit() {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn step_digits(&mut self) -> usize {
+        if self.idx == self.buf.len() {
+            panic!("Unexpected EOF")
+        }
+        let mut len = 0;
+        while self.idx < self.buf.len() {
+            let c = self.buf.get(self.idx).unwrap();
+            if !c.is_ascii_digit() {
+                break;
+            }
+            len += 1;
+            self.step();
+        }
+        len
+    }
+
+    #[inline]
+    fn step(&mut self) {
+        self.idx += 1;
+    }
+
+    #[inline]
+    fn step_by(&mut self, n: usize) {
+        self.idx += n;
+    }
+
+    #[inline]
+    fn skip_unused(&mut self) {
+        while self.idx < self.buf.len() {
+            let c = self.buf.get(self.idx).unwrap();
+            if c.is_ascii_whitespace() {
+                self.step();
+                continue;
+            }
+            // Allow parse escaped white space
+            if *c == b'\\' {
+                if self.idx + 1 < self.buf.len()
+                    && matches!(self.buf[self.idx + 1], b'n' | b'r' | b't')
+                {
+                    self.step_by(2);
+                    continue;
+                }
+                if self.idx + 3 < self.buf.len()
+                    && self.buf[self.idx + 1] == b'x'
+                    && self.buf[self.idx + 2] == b'0'
+                    && self.buf[self.idx + 3] == b'C'
+                {
+                    self.step_by(4);
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+
+    fn parse_json_null(&mut self) {
+        let data = [b'n', b'u', b'l', b'l'];
+        for v in data.into_iter() {
+            self.must_is(v);
+        }
         self.json.nodes.push(Node::Null);
-        self.step_by(4);
     }
 
-    fn parse_true(&mut self) -> () {
-        self.must_match_by("true");
-        self.json.offsets.push(None);
+    fn parse_json_true(&mut self) {
+        let data = [b't', b'r', b'u', b'e'];
+        for v in data.into_iter() {
+            self.must_is(v);
+        }
         self.json.nodes.push(Node::True);
-        self.step_by(4);
     }
 
-    fn parse_false(&mut self) -> () {
-        self.must_match_by("false");
-        self.json.offsets.push(None);
+    fn parse_json_false(&mut self) {
+        let data = [b'f', b'a', b'l', b's', b'e'];
+        for v in data.into_iter() {
+            self.must_is(v);
+        }
         self.json.nodes.push(Node::False);
-        self.step_by(5);
     }
 
-    fn parse_string(&mut self) -> () {
-        self.must_match(b'"');
-        self.step();
-        let start = self.pos;
-        let mut has_escape = false;
-        while self.pos < self.buf.len() {
-            // escape character
-            if self.buf[self.pos] == b'\\' {
-                has_escape = true;
-                self.step_by(2);
-            } else if self.buf[self.pos] != b'"' {
+    fn parse_json_number(&mut self) {
+        let start_idx = self.idx;
+
+        let mut has_fraction = false;
+        let mut has_exponent = false;
+        let mut negative: bool = false;
+
+        if self.check_next(b'-') {
+            negative = true;
+            self.step();
+        }
+        if self.check_next(b'0') {
+            self.step();
+            if self.check_digit() {
                 self.step();
-            } else {
-                break;
+                panic!("Invalid number value")
+            }
+        } else {
+            let len = self.step_digits();
+            if len == 0 {
+                self.step();
+                panic!("Invalid number value")
             }
         }
-        let s = if has_escape {
-            parse_string(&self.buf[start..self.pos]).unwrap()
-        } else {
-            std::str::from_utf8(&self.buf[start..self.pos])
-                .unwrap()
-                .to_string()
-        };
-        self.must_match(b'"');
-        self.step();
-        self.json.nodes.push(Node::String);
-        self.json.offsets.push(Some(self.json.strings.len()));
-        self.json.strings.push(s.to_string());
-    }
-
-    fn parse_number(&mut self) -> () {
-        let start = self.pos;
-
-        let positive = if self.buf[self.pos] == b'-' {
+        if self.check_next(b'.') {
+            has_fraction = true;
             self.step();
-            false
-        } else {
-            true
-        };
-
-        let mut exp = false;
-        let mut fraction = false;
-
-        self.skip_digits();
-
-        if self.peek(b'.') {
-            fraction = true;
+            let len = self.step_digits();
+            if len == 0 {
+                self.step();
+                panic!("Invalid number value")
+            }
+        }
+        if self.check_next_either(b'E', b'e') {
+            has_exponent = true;
             self.step();
-            self.skip_digits();
-        } else if self.peek(b'e') || self.peek(b'E') {
-            exp = true;
-            self.step();
-            if self.peek(b'-') || self.peek(b'+') {
+            if self.check_next_either(b'+', b'-') {
                 self.step();
             }
-            self.skip_digits();
+            let len = self.step_digits();
+            if len == 0 {
+                self.step();
+                panic!("Invalid number value")
+            }
+        }
+        let s = unsafe { std::str::from_utf8_unchecked(&self.buf[start_idx..self.idx]) };
+
+        if !has_fraction && !has_exponent {
+            if !negative {
+                if let Ok(v) = s.parse::<u64>() {
+                    self.json.nodes.push(Node::Number);
+                    self.json.numbers.push(v as f64);
+                    return;
+                }
+            } else if let Ok(v) = s.parse::<i64>() {
+                self.json.nodes.push(Node::Number);
+                self.json.numbers.push(v as f64);
+                return;
+            }
         }
 
-        let s = std::str::from_utf8(&self.buf[start..self.pos]).unwrap();
-        let n = s.parse::<f64>().unwrap();
-        self.json.offsets.push(Some(self.json.numbers.len()));
-        self.json.nodes.push(Node::Number);
-        self.json.numbers.push(n);
+        match fast_float::parse(s) {
+            Ok(v) => {
+                self.json.nodes.push(Node::Number);
+                self.json.numbers.push(v);
+            }
+            Err(_) => panic!("Invalid number value"),
+        }
     }
 
-    fn parse_array(&mut self) -> () {
-        self.must_match(b'[');
-        self.json.offsets.push(None);
-        self.json.nodes.push(Node::StartArray);
-        self.step();
+    fn parse_json_string(&mut self) {
+        self.must_is(b'"');
+
+        let start_idx = self.idx;
+        let mut escapes = 0;
         loop {
-            self.parse_value();
-            self.skip_whitespaces();
-            if self.peek(b',') {
-                self.step();
-            } else if self.peek(b']') {
-                self.step();
-                self.json.offsets.push(None);
-                self.json.nodes.push(Node::EndArray);
-                break;
-            } else {
-                panic!("unexpected character: {}", self.buf[self.pos] as char);
+            let c = self.next();
+            match c {
+                b'\\' => {
+                    self.step();
+                    escapes += 1;
+                    let next_c = self.next();
+                    if *next_c == b'u' {
+                        self.step();
+                        let next_c = self.next();
+                        if *next_c == b'{' {
+                            self.step_by(6);
+                        } else {
+                            self.step_by(4);
+                        }
+                    } else {
+                        self.step();
+                    }
+                    continue;
+                }
+                b'"' => {
+                    self.step();
+                    break;
+                }
+                _ => {}
             }
+            self.step();
         }
+
+        let data = &self.buf[start_idx..self.idx - 1];
+        let val = if escapes > 0 {
+            let len = self.idx - 1 - start_idx - escapes;
+            let mut idx = start_idx + 1;
+            parse_string(data, len, &mut idx).unwrap()
+        } else {
+            std::str::from_utf8(data).unwrap().to_string()
+        };
+        self.json.nodes.push(Node::String);
+        self.json.strings.push(val);
     }
 
-    fn parse_object(&mut self) -> () {
-        self.must_match(b'{');
-        self.json.offsets.push(None);
-        self.json.nodes.push(Node::StartObject);
-        self.step();
+    fn parse_json_array(&mut self) {
+        self.must_is(b'[');
+
+        self.json.nodes.push(Node::StartArray);
+        let mut first = true;
+        loop {
+            self.skip_unused();
+            let c = self.next();
+            if *c == b']' {
+                self.step();
+                break;
+            }
+            if !first {
+                if *c != b',' {
+                    panic!("Unexpected character")
+                }
+                self.step();
+            }
+            first = false;
+            self.parse_json_value();
+        }
+        self.json.nodes.push(Node::EndArray);
+    }
+
+    fn parse_json_object(&mut self) {
+        self.must_is(b'{');
 
         let mut first = true;
-
+        self.json.nodes.push(Node::StartObject);
         loop {
-            self.skip_whitespaces();
-            if self.peek(b'}') {
+            self.skip_unused();
+            let c = self.next();
+            if *c == b'}' {
                 self.step();
-                self.json.offsets.push(None);
-                self.json.nodes.push(Node::EndObject);
                 break;
             }
-
             if !first {
-                self.must_match(b',');
+                if *c != b',' {
+                    panic!("Unexpected character")
+                }
                 self.step();
-            } else {
-                first = false;
             }
-
-            self.skip_whitespaces();
-            self.json.offsets.push(Some(self.json.strings.len()));
+            first = false;
+            self.parse_json_value();
+            if !matches!(self.json.nodes.pop(), Some(Node::String)) {
+                panic!("Expected string key")
+            }
             self.json.nodes.push(Node::Key);
-            self.parse_string();
-            // Pop the Node::String
-            self.json.nodes.pop();
-            self.json.offsets.pop();
-            self.skip_whitespaces();
-            self.must_match(b':');
+            self.skip_unused();
+            let c = self.next();
+            if *c != b':' {
+                panic!("Unexpected character")
+            }
             self.step();
-            self.parse_value();
+            self.parse_json_value();
         }
-    }
-
-    fn skip_digits(&mut self) -> () {
-        while self.pos < self.buf.len() {
-            match self.buf[self.pos] {
-                b'0'..=b'9' => self.step(),
-                _ => break,
-            }
-        }
-    }
-
-    fn skip_whitespaces(&mut self) {
-        while self.pos < self.buf.len() {
-            if self.buf[self.pos].is_ascii_whitespace() {
-                self.step();
-            } else {
-                break;
-            }
-            // jsonb by databend also skips the "\\n|\\r|\\t" characters, don't know why
-        }
-    }
-
-    fn step(&mut self) {
-        if self.pos < self.buf.len() {
-            self.pos += 1;
-        } else {
-            panic!("unexpected end of input");
-        }
-    }
-
-    fn step_by(&mut self, n: usize) {
-        if self.pos + n <= self.buf.len() {
-            self.pos += n;
-        } else {
-            panic!("unexpected end of input");
-        }
-    }
-
-    fn peek(&mut self, c: u8) -> bool {
-        if self.pos < self.buf.len() && self.buf[self.pos] == c {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn peek_by(&mut self, s: &str) -> bool {
-        let s = s.as_bytes();
-        if self.pos + s.len() <= self.buf.len() && &self.buf[self.pos..self.pos + s.len()] == s {
-            true
-        } else {
-            false
-        }
-    }
-
-    fn must_match(&mut self, c: u8) -> bool {
-        if self.peek(c) {
-            true
-        } else {
-            panic!("unexpected character: {}", c as char);
-        }
-    }
-
-    fn must_match_by(&mut self, s: &str) -> bool {
-        if self.peek_by(s) {
-            true
-        } else {
-            panic!("unexpected string: {}", s);
-        }
+        self.json.nodes.push(Node::EndObject);
     }
 }
