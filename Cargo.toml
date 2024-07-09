@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 fast-float = "0.2.0"
 jsonb = { git = "https://github.com/CookiePieWw/jsonb.git", branch = "main" }
+serde_json = "1"
