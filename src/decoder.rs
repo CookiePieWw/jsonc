@@ -1,4 +1,5 @@
 use crate::value::{Jsonc, Node};
+use jsonb::functions::escape_scalar_string;
 
 pub fn decode(json: &Jsonc) -> String {
     let mut result = String::new();
@@ -11,14 +12,18 @@ pub fn decode(json: &Jsonc) -> String {
                 result.push('[');
             }
             Node::EndArray => {
-                result.pop();
+                if result.ends_with(',') {
+                    result.pop();
+                }
                 result.push_str("],");
             }
             Node::StartObject => {
                 result.push('{');
             }
             Node::EndObject => {
-                result.pop();
+                if result.ends_with(',') {
+                    result.pop();
+                }
                 result.push_str("},");
             }
             Node::Key => {
@@ -27,7 +32,11 @@ pub fn decode(json: &Jsonc) -> String {
             }
             Node::String => {
                 let string = iter_str.next().unwrap();
-                result.push_str(&format!("\"{}\",", string));
+                let bytes = string.as_bytes();
+                let mut escaped_string = String::new();
+                escape_scalar_string(bytes, 0, bytes.len(), &mut escaped_string);
+                result.push_str(&escaped_string);
+                result.push(',');
             }
             Node::Number => {
                 let number = iter_num.next().unwrap();
@@ -39,9 +48,13 @@ pub fn decode(json: &Jsonc) -> String {
             Node::False => {
                 result.push_str("false,");
             }
-            _ => {}
+            Node::Null => {
+                result.push_str("null,");
+            }
         }
     }
-    result.pop();
+    if result.ends_with(',') {
+        result.pop();
+    }
     result
 }
