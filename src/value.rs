@@ -1,3 +1,5 @@
+use crate::{decoder::decode_slice, slice::JsoncSlice};
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Node {
     Null,
@@ -91,5 +93,30 @@ impl Jsonc {
 
     pub fn number_opt_list(&self) -> Vec<Option<f64>> {
         self.numbers.clone().into_iter().map(Some).collect()
+    }
+
+    pub fn as_slice(&self) -> JsoncSlice {
+        self.into()
+    }
+
+    pub fn get(&self, paths: &[&str]) -> Option<String> {
+        let mut json_slice = self.as_slice();
+        for path in paths {
+            if path.starts_with("\"") {
+                if let Some(slice) = json_slice.get_by_path(&path[1..path.len() - 1]) {
+                    json_slice = slice;
+                } else {
+                    return None;
+                }
+            } else {
+                let idx = path.parse::<usize>().unwrap();
+                if let Some(slice) = json_slice.get_by_idx(idx) {
+                    json_slice = slice;
+                } else {
+                    return None;
+                }
+            }
+        }
+        Some(decode_slice(json_slice))
     }
 }

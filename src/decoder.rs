@@ -1,7 +1,11 @@
-use crate::value::{Jsonc, Node};
+use crate::{slice::JsoncSlice, value::{Jsonc, Node}};
 use jsonb::functions::escape_scalar_string;
 
 pub fn decode(json: &Jsonc) -> String {
+    decode_slice(json.into())
+}
+
+pub fn decode_slice(json: JsoncSlice) -> String {
     let mut result = String::new();
     let iter = json.nodes.iter();
     let mut iter_str = json.strings.iter();
